@@ -1,0 +1,478 @@
+---
+title: "Figures for E.coli growth"
+author: "Melanie Trouse"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#R Version 4.2.1
+library(graphics)
+library(mcr)
+library(minpack.lm)
+library(ggplot2)
+library(qpcR)
+library(scales)
+library(corrplot)
+library(qgraph)
+library(regclass)
+
+#load data files
+load("ecoli_fig_data.RData")
+```
+
+Figure 3: Deming Regression Analysis
+
+```{r Figure3(Deming), echo=FALSE}
+
+
+#loop for error ratios and slopes
+dem.low<-c()
+dem.high<-c()
+for(i in 1:300){
+  dem.reg.p<-mcreg(data2$tdlambda, data2$lnLdLb, error.ratio=i, 
+                     method.reg="Deming")
+  errors[i]<-i
+  dem.slopes[i]<-dem.reg.p@para[2]
+  dem.low[i]<-dem.reg.p@para[2,3]
+  dem.high[i]<-dem.reg.p@para[2,4]
+}
+
+#specific error ratios for plot
+dem.reg1<-mcreg(data2$tdlambda, data2$lnLdLb, error.ratio=0.5,
+                method.reg = "Deming")
+dem.reg2<-mcreg(data2$tdlambda, data2$lnLdLb, error.ratio=1,
+                method.reg = "Deming")
+dem.reg5<-mcreg(data2$tdlambda, data2$lnLdLb, error.ratio=35,
+                method.reg = "Deming")
+
+#create confidence interval
+polygon.x<-c(errors, rev(errors))
+polygon.y<-c(dem.low, rev(dem.high))
+
+#plot of data points with various slopes
+#par(mgp=c(2,0.7,0), mar=c(4,4,2,2), mfcol=c(1,2))
+ sapply(LETTERS[1], function(x){
+ {plot(data2$tdlambda, data2$lnLdLb, col="gray",
+      xlab=expression("T"[d]*bar(lambda)), 
+      ylab=expression(ln ("L"[d]/"L"[b])),
+     main=NULL,
+     xlim=c(0.2,1.5),
+     ylim=c(0.2,1.2),
+     cex.lab=1.5, cex.axis=1)
+ abline(dem.reg1@para[1:2], col="blue", lty=1, lwd=3)
+ abline(dem.reg2@para[1:2], col="red", lty=3, lwd=3)
+ abline(dem.reg5@para[1:2], col="darkgreen", lty=4, lwd=3)
+ abline(0,1,col=1, lwd=2, lty=2)
+ legend(x='bottomright', 
+       legend=c(expression(sigma*"=0.5 m=2.06"),
+                expression(sigma*"=1.0 m=2.44"),
+                expression(sigma*"=35 m=0.889"),'y=x'),
+       col=c("blue","red","darkgreen", "black"), lty=c(1,3,4,2), 
+       lwd=c(3,3,3,2),bty='n')
+ legend("topleft", legend="n=816 cells", pch=1, col="gray", bty="n")}
+ fig_label(x, cex=2)})
+ 
+ sapply(LETTERS[2], function(x){
+   {plot(errors, dem.slopes, xlab=expression(sigma), ylab="Slope(m)",
+        cex.lab=1.5,type="l",lwd=2, ylim=c(0.4,1.1))
+   polygon(x=polygon.x, y=polygon.y, 
+           col=adjustcolor("gray", alpha.f=0.3), border=NA)
+   legend("bottomright", legend=c("Deming Models(n=300) with 95% CI"), 
+          col=1, lty=1, lwd=2, bty="n")
+   abline(h=1, lty=2, col="red")}
+  fig_label(x, cex=2)})
+```
+
+
+Figure 4- Examples of all four models 
+
+```{r Figure4(examples), echo=FALSE}
+#Examples with all 4 models
+
+  #par(mgp=c(2.5,0.7,0), mar=c(4,4,2,2), mfrow=c(2,2), 
+    cex.lab=1.5, cex.axis=1.5, font=2)
+#best ECG  
+  {sapply(LETTERS[1], function(x){
+  col<-560
+  set1<-na.omit(data1[,c(1,col)])
+  names(set1)<-c("hour","length")
+  Td <- max(set1[,1])
+  hour2<-set1$hour^2
+  plot(set1$hour, log(set1$length), main = NULL, 
+       xlab="Hour", ylab="ln(Length-um)", xlim=c(1,2.5), ylim=c(0.6,1.0))
+  fit1<-nlsLM(log(length)~log(L0*exp(hour*r)), data = set1,  #ECG
+              start=list(L0=1.5,r=0.2))
+  fit2<-nlsLM(log(length) ~ log(L0*exp(hour*r +hour2*Deltar)), #ETG
+           data=set1, start=list(L0=1.5, r=0.2, Deltar=0.01))
+  fit3<-nlsLM(log(length)~log(L0*(1+hour*r)), data=set1, start=list(L0=1.5, #LCG
+                                                                    r=0.2))
+  fit4<-nlsLM(log(length)~log(L0*(1+hour*r+hour2*Deltar)), data=set1,  #LTG
+              start=list(L0=1.5, r=0.2, Deltar=0.01))
+  newtimes<-seq(0,max(set1$hour),0.05)    #create new axis for quadratic terms
+  lines(newtimes, predict(fit1,newdata=data.frame(hour=newtimes)),
+        col=1,lwd=2,lty=1)
+  lines(newtimes, predict(fit2,newdata=data.frame(hour=newtimes,
+                                      hour2=newtimes^2)),col="red",lwd=2,lty=2)
+  lines(newtimes, predict(fit3,newdata=data.frame(hour=newtimes)),
+        col="wheat4",lwd=3,lty=3)
+  lines(newtimes, predict(fit4,newdata=data.frame(hour=newtimes,
+                                          hour2=newtimes^2)),col=4,lwd=2,lty=4)
+  legend("topleft", legend=names(data1)[col], text.font=2,cex=1.5, bty="n")
+  legend("bottomright",legend=c("ECG(w=0.5 SSR=.0024)", "ETG(w=0.24 SSR=.0024)", 
+         expression("LCG(w=3.7x10"^-15*" SSR=.0093)"),"LTG(w=0.26 SSR=.0024)"), 
+         lwd=c(2,2,3,2),lty=c(1,2,3,4), col=c(1, "red", "wheat4", 4),bty="n")
+  fig_label(x, cex=2)})}
+  
+
+  #best ETG fit
+  {sapply(LETTERS[2], function(x){
+    col<-673
+    set1<-na.omit(data1[,c(1,col)])
+    names(set1)<-c("hour","length")
+    Td <- max(set1[,1])
+    hour2<-set1$hour^2
+    plot(set1$hour, log(set1$length), main = NULL, 
+         xlab="Hour", ylab="ln(Length-um)", xlim=c(1,2.5), ylim=c(0.6,1.0))
+    fit1<-nlsLM(log(length)~log(L0*exp(hour*r)), data = set1, 
+                start=list(L0=1.5, r=0.2))
+    fit2<-nlsLM(log(length) ~ log(L0*exp(hour*r +hour2*Deltar)), 
+                data=set1, start=list(L0=1.5, r=0.2, Deltar=0.01))
+    fit3<-nlsLM(log(length)~log(L0*(1+hour*r)), data=set1, 
+                start=list(L0=1.5, r=0.2))
+    fit4<-nlsLM(log(length)~log(L0*(1+hour*r+hour2*Deltar)), data=set1, 
+                start=list(L0=1.5, r=0.2, Deltar=0.01))
+    newtimes<-seq(0,max(set1$hour),0.05)
+    lines(newtimes, predict(fit1,newdata=data.frame(hour=newtimes)),
+          col=1,lwd=2,lty=1)
+    lines(newtimes, predict(fit2,newdata=data.frame(hour=newtimes,
+                                                    hour2=newtimes^2)),
+          col="red",lwd=2,lty=2)
+    lines(newtimes, predict(fit3,newdata=data.frame(hour=newtimes)),
+          col="wheat4",lwd=3,lty=3)
+    lines(newtimes, predict(fit4,newdata=data.frame(hour=newtimes,
+                                                    hour2=newtimes^2)),
+          col=4,lwd=2,lty=4)
+    legend("topleft", legend=names(data1)[col], text.font=2,cex=1.5, bty="n")
+    legend("bottomright",legend=c("ECG(w=0.29 SSR=.0039)", "ETG(w=0.67     SSR=.0036)",expression("LCG(w=3.9x10"^-18*" SSR=.0144)"),"LTG(w=0.04 SSR=.0040)"),lwd=c(2,2,3,2),lty=c(1,2,3,4), col=c(1, "red", "wheat4", 4),bty="n")
+    fig_label(x, cex=2)})}
+  
+#best LCG fit 
+  {sapply(LETTERS[3], function(x){
+    col<-27
+    set1<-na.omit(data1[,c(1,col)])
+    names(set1)<-c("hour","length")
+    Td <- max(set1[,1])
+    hour2<-set1$hour^2
+    plot(set1$hour, log(set1$length), main = NULL, 
+         xlab="Hour", ylab="ln(Length-um)", xlim=c(1,2.5),ylim=c(0.6,1.0))
+    fit1<-nlsLM(log(length)~log(L0*exp(hour*r)), data = set1, 
+                start=list(L0=1.5, r=0.2))
+    fit2<-nlsLM(log(length) ~ log(L0*exp(hour*r +hour2*Deltar)), 
+                data=set1, start=list(L0=1.5, r=0.2, Deltar=0.01))
+    fit3<-nlsLM(log(length)~log(L0*(1+hour*r)), data=set1, 
+                start=list(L0=1.5, r=0.2))
+    fit4<-nlsLM(log(length)~log(L0*(1+hour*r+hour2*Deltar)), data=set1, 
+                start=list(L0=1.5, r=0.2, Deltar=0.01))
+    newtimes<-seq(0,max(set1$hour),0.05)
+    lines(newtimes, predict(fit1,newdata=data.frame(hour=newtimes)),
+          col=1,lwd=2,lty=1)
+    lines(newtimes, predict(fit2,newdata=data.frame(hour=newtimes,
+                                      hour2=newtimes^2)),col="red",lwd=2,lty=2)
+    lines(newtimes, predict(fit3,newdata=data.frame(hour=newtimes)),
+          col="wheat4",lwd=3,lty=3)
+    lines(newtimes, predict(fit4,newdata=data.frame(hour=newtimes,
+                                          hour2=newtimes^2)),col=4,lwd=2,lty=4)
+    legend("topleft", legend=names(data1)[col], text.font=2,cex=1.5, bty="n")
+    legend("bottomright",legend=c(expression("ECG(w=1.4x10"^-13*" SSR=0.09)"), 
+                                  "ETG(w=.0032 SSR=.052)", "LCG(w=0.72 SSR=.047)", "LTG(w=0.27 SSR=.047)"), 
+           lwd=c(2,2,3,2),lty=c(1,2,3,4), col=c(1, "red", "wheat4", 4),bty="n")
+    fig_label(x, cex=2)})}
+  
+#best LTG fit
+{sapply(LETTERS[4], function(x){
+  col<-99
+  set1<-na.omit(data1[,c(1,col)])
+  names(set1)<-c("hour","length")
+  Td <- max(set1[,1])
+  hour2<-set1$hour^2
+  plot(set1$hour, log(set1$length), main = NULL, 
+       xlab="Hour", ylab="ln(Length-um)",xlim=c(1,2.5), ylim=c(0.6,1.0))
+  fit1<-nlsLM(log(length)~log(L0*exp(hour*r)), data = set1, 
+              start=list(L0=1.5, r=0.2))
+  fit2<-nlsLM(log(length) ~ log(L0*exp(hour*r +hour2*Deltar)), 
+              data=set1, start=list(L0=1.5, r=0.2, Deltar=0.01))
+  fit3<-nlsLM(log(length)~log(L0*(1+hour*r)), data=set1, 
+              start=list(L0=1.5, r=0.2))
+  fit4<-nlsLM(log(length)~log(L0*(1+hour*r+hour2*Deltar)), data=set1, 
+              start=list(L0=1.5, r=0.2, Deltar=0.01))
+  newtimes<-seq(0,max(set1$hour),0.05)
+  lines(newtimes, predict(fit1,newdata=data.frame(hour=newtimes)),
+        col=1,lwd=2,lty=1)
+  lines(newtimes, predict(fit2,newdata=data.frame(hour=newtimes,
+                                      hour2=newtimes^2)),col="red",lwd=2,lty=2)
+  lines(newtimes, predict(fit3,newdata=data.frame(hour=newtimes)),
+        col="wheat4",lwd=3,lty=3)
+  lines(newtimes, predict(fit4,newdata=data.frame(hour=newtimes,
+                                          hour2=newtimes^2)),col=4,lwd=2,lty=4)
+  legend("topleft", legend=names(data1)[col], text.font=2,cex=1.5, bty="n")
+  legend("bottomright",legend=c("ECG(w=.02 SSR=.0035)", 
+        "ETG(w=0.05 SSR=.0033)",expression("LCG(w=1.6x10"^-29*" SSR=.030)"), 
+                                "LTG(w=0.93 SSR=.0029)"),
+         lwd=c(2,2,3,2),lty=c(1,2,3,4), col=c(1, "red", "wheat4", 4),bty="n" )
+  fig_label(x, cex=2)})}
+}
+```
+
+
+```{r Figure5(weights), echo=FALSE}
+
+#loop for all aics and weights for each cell
+Weights<-NULL
+models<-c("ECG", "ETG", "LCG", "LTG")
+for (i in 1:nrow(aics)){
+  set<-c(aics$ECG[i], aics$ETG[i], aics$LCG[i], aics$LTG[i])
+  w<-akaike.weights(set)
+  x<-which.max(w$weights)
+  w1<-data.frame(Cell.ID=dataadd1[i,1], model=models,
+                  W= w$weights, max.mod=models[x])
+  Weights<-rbind(Weights,w1)
+}
+
+#scale weights so that lowest is .001
+Weights$scaled<-ifelse(Weights$W<.001, .001, Weights$W)
+
+#calculate average weights for each model
+means<-aggregate(W~model, Weights, mean)
+means$W<-round(means$W, digits=4)
+
+#line plot for weights by model for each cell
+par(mar=c(2,2,4,4))
+ggplot(data=Weights, aes(x=model, y=log10(scaled)))+
+  geom_line(aes(colour=max.mod, group=Cell.ID))+
+  scale_colour_grey(start=0.1, end=0.8, name="Highest W \nfor Cell")+
+  theme_bw()+
+  labs(x="Model",y="Akaike Weight(W)")+ 
+  theme(axis.text=element_text(size=12), axis.title=element_text(size=13))+
+  scale_y_continuous(labels = math_format()) +
+  geom_point(data=means, aes(x=model, y=log10(W)),size=2, col="red")+
+  geom_line(data=means, aes(model, log10(W)), group=1,lwd=1,col="red")
+```
+
+
+```{r Figure6(delta.lambda), echo=FALSE, fig.keep='all'}
+#comparing change in growth rate for time-dependent models
+#parameters from model fits
+
+
+#histograms
+hadd2<-hist(delta.lambdas$ETG)
+hadd4<-hist(delta.lambdas$LTG)
+
+#par(mgp=c(3,1,0), mfrow=c(1,2), mar=c(4,5,2,2))
+#compare histograms
+sapply(LETTERS[1],function(x){
+plot(hadd2,col="grey45", 
+     main=NULL, angle=45, density=15,
+     xlab=expression(Delta*lambda*"(1/h"^2*")"), xlim=c(-.05, 0.1))
+abline(v=0, lty=2,col="red")
+plot(hadd4,add=TRUE,col="blue", angle=0, density=15)
+legend("topright", legend=c("ETG","LTG"),
+       bty="n",fill = c("grey45", "blue"), angle=c(45, 0), density=seq(15,15),
+       cex=1.5)
+text(-.03, 180, col="grey45", cex=2, "26.6%")
+text(-.03, 140, col="blue", cex=2, "3.9%")
+text(.07, 180, col="grey45", cex=2, "73.4%")
+text(.07, 140, col="blue", cex=2, "96.1%")
+fig_label(x, cex=2)})
+#plot of values
+sapply(LETTERS[2], function(x){
+plot(expquad$delta.lambda, linearquad$Dlambda, col="gray", 
+     xlab=expression("ETG "*Delta*lambda*"(1/h"^2*")"), 
+     ylab=expression("LTG "*Delta*lambda*"(1/h"^2*")"), xlim=c(-0.02,0.1), ylim=c(-0.02,0.1))
+Mr<-lm(dataadd4$DeltaR~dataadd2$Delta.r)
+abline(Mr, col="blue", lwd="2")
+abline(0,1, col="black", lty=2)
+legend(x="bottomright", legend=c("y=.02+1.41x","y=x"),col=c("blue", "black"), 
+       lty=c(1,2), lwd=c(2,1),bty="n", cex=1.5)
+legend("topleft", legend = expression(Delta*lambda*"(n=816)"),
+       pch=1, col="gray", bty="n", cex=1.5)
+fig_label(x, cex=2)})
+
+```
+
+Figure 7-Correlations
+```{r Figure7(cors), echo=F}
+#parameter correlation analysis
+#previously published figure B has legend created by out-of-date function. Legend from A matches the scale from B
+
+#par(cex=1.5, mar=c(2,2,3,4),mfcol=c(1,2))
+
+#heatmap/plot(A)
+sapply(LETTERS[1], function(x){
+corrplot(plotcors,type="upper", order="original", 
+         tl.cex=2,tl.col="black", tl.srt=45,method="number",
+         col=colorRampPalette(c("red3","gray","green3"))(100),
+         p.mat = pval$p, sig.level = 0.05, insig = "blank")
+fig_label(x,cex=2)})
+
+#correlation network(B)
+  sapply(LETTERS[2], function(x){
+  qgraph(cormat, shape="circle", palette="colorblind", negDashed=T,
+       layout="spring", vsize=7, labels=c(expression("L"[b]),expression(lambda),expression(Delta*lambda),expression(Delta*"L"), expression("T"[d]), expression("L"[d])),label.cex=2 )
+fig_label(x, cex=2)})
+
+
+
+```
+
+
+```{r,Figure8(TonTd), echo=F}
+#histogram of relative Ton/Td for ETG-Ton fits
+#compare change in growth rate between ETG and ETG-Ton fits
+
+#histogram of relative Ton
+histton1<-hist(etg.steps3b$Ton/etg.steps3b$Td)
+
+#plot histogram(A)
+#par(mgp=c(2,0.7,0), mar=c(4,4,2,2), mfrow=c(1,2), cex.lab=1.5, cex.axis=1.5)
+sapply(LETTERS[1], function(x){
+ { plot(histton1,
+       main=NULL, 
+       xlab=expression(T[on]/T[d]), xlim=c(0,1), ylim=c(0,60))
+  legend("topright", legend = "n=279/458", bty="n")}
+  fig_label(x, cex=2)})
+
+#plot delta.lambdad ETG-Ton vs. ETG(B)
+sapply(LETTERS[2], function(x){
+  {plot(etg.steps3b$dl.fit, etg.steps3b$dl.step,
+       xlim=c(-.1,.1), ylim=c(-0.1, 0.1), 
+       ylab=expression(Delta*lambda*" ETG-"*T[on]*" (/hour"^2*")"),
+       xlab=expression(Delta*lambda*" ETG (/hour"^2*")"))
+  abline(h=0, col="red")
+  abline(v=0,col="red")
+  abline(0,1, lty=2)
+  points(etgd2, rep(0,179),pch=4, col="darkblue") # points ETG-Ton did not improve
+  legend("topleft", legend=c("n=279/458", "n=179/458"), pch=c(1,4),col=c(1, "darkblue"), 
+         bty = "n", cex=1.5)}
+  fig_label(x, cex=2)})
+```
+
+```{r FigureS1(kar.plots), echo=F}
+#Reproducing Kar et al. plots Figure 2
+
+#par(mgp=c(2,0.5,0), mfrow=c(1,2), mar=c(4,4,2,2)) 
+
+#ln(Ld/Lb) vs. Td(lambda)(A)
+sapply(LETTERS[1], function(x){
+{plot(data2$tdlambda, data2$lnLdLb, col="gray",
+      xlab=expression("T"[d]*bar(lambda)), ylab=expression(ln ("L"[d]/"L"[b])),
+     xlim=c(0,1.5),
+     ylim=c(0,1.5),
+     main=NULL)
+    M<-lm(data2$lnLdLb~data2$tdlambda)
+  points(bins$midpoints,bins$avgy, pch=18, col="blue")
+  abline(M, col="red", lwd=2)
+  abline(0,1, col=1,lwd=2,lty=3)
+  abline(binM, col="blue")
+  legend(x="bottomright", legend=c('all data:y=0.336x+0.44','y=x','binned data:y=0.342x+0.427'), col=c("red",1,"blue"),lwd=c(2,2,1),lty=c(1,3,1),bty="n")
+  legend(x="topleft", legend=c("n=816 cells","bins=6"), 
+         pch =c(1,18),col=c("gray","blue"), bty="n")
+  text(bins$midpoints,bins$avgy, labels=bins$midpoints,pos = 1, cex=0.8, col="blue")}
+fig_label(x, cex=2)})
+
+#Td(lambda) vs. ln(Ld/Lb)(B)
+sapply(LETTERS[2], function(x){
+{plot(data2$lnLdLb, data2$tdlambda, col="gray",
+     xlab=expression(ln ("L"[d]/"L"[b])), ylab=expression("T"[d]*bar(lambda)),
+     main=NULL,
+     xlim=c(0,1.5),
+     ylim=c(0,1.5),)
+  M2<-lm(data2$tdlambda~data2$lnLdLb)
+points(bins2$midpoints2,bins2$avgy2, pch=18, col="blue")
+abline(M2, col="red", lwd=2)
+abline(0,1,lwd=2, lty=3)
+abline(binM2, col="blue")}
+legend(x="bottomright", legend=c('all data:y=1.061x-0.013','y=x','binned data:y=0.998x+0.048'), 
+       col=c("red",1,"blue"),lwd=c(2,2,1),lty=c(1,3,1), bty="n")
+legend(x="topleft", legend=c("n=816 cells","bins=10"), 
+       pch =c(1,18),col=c("gray","blue"), bty="n" )
+text(bins2$midpoints2,bins2$avgy2, labels=bins2$midpoints2,pos = 3, offset=0.8, cex=0.8, col="blue")
+fig_label(x, cex=2)})
+
+```
+```{r, Fig S2(resids), echo=F}
+#A
+check_regression(lm(data2$lnLdLb~data2$tdlambda))
+
+#B
+check_regression(lm(data2$tdlambda~data2$lnLdLb))
+```
+```{r, FigureS3(cubic), echo=F}
+#cubic vs. quadratic ETG
+
+#par(mgp=c(2,0.5,0), mar=c(4,4,2,2),cex.lab=1.8, cex.axis=1.8)
+{
+col<-2
+set1<-na.omit(data1[,c(1,col)])
+names(set1)<-c("hour","length")
+hour2<-set1$hour^2
+hour3<-set1$hour^3
+plot(set1$hour, log(set1$length), main = NULL, lwd=1.5, 
+     xlab="Hour", ylab="ln(Length-um)",cex=1.5)
+legend("topleft", legend=names(data1)[col], text.font=2,cex=1.5, bty="n")
+fitq<-lm(log(set1$length)~ hour+hour2, data = set1)
+newtimes<-seq(0,max(set1$hour),0.05)
+lines(newtimes, predict(fitq,newdata=data.frame(hour=newtimes, hour2=newtimes^2))
+      , col="blue",lwd=2)
+fitc<-lm(log(set1$length)~ hour+hour2+hour3, data = set1)
+newtimes<-seq(0,max(set1$hour),0.05)
+lines(newtimes, predict(fitc,newdata=data.frame(hour=newtimes, hour2=newtimes^2, 
+                                                hour3=newtimes^3))
+      , col="red",lwd=2, lty=2)
+legend("bottomright",
+       legend=c(expression("y=0.16x+.02x"^2*"+ln(1.61)"),
+       expression(atop("y=.03x+0.11x"^2*"-.02x"^3*"+ln(1.67)"))),
+       col=c("blue","red"), lty=c(1,2), lwd=c(2,2),
+       title=expression("ANOVA p<.0001"), bty="n", cex=1.5)
+}
+```
+
+```{r, FigureS4(deltaL), echo=F}
+
+
+#histograms of DeltaL's for all four models
+histdl1<-hist(DeltaLs$ECGdl)
+histdl2<-hist(DeltaLs$ETGdl)
+histdl3<-hist(DeltaLs$LCGdl)
+histdl4<-hist(DeltaLs$LTGdl)
+
+#par(mgp=c(3,1,0), mfcol=c(1,2), cex.lab=1.5, cex.axis=1.5)
+
+#ECG vs ETG(A)
+{sapply(LETTERS[1],function(x){
+  plot(histdl1, col="red",main=NULL,
+       angle=45, density=15,
+       xlab=expression(Delta*"L"), xlim=c(0.5,2.5),ylim=c(0,300))
+  plot(histdl2, add=TRUE, col="blue", 
+       angle=0, density=15)
+  legend("topright", legend=c("ECG","ETG"),
+         bty="n",fill = c("red", "blue"), angle=c(45, 0), density=seq(15,15),
+         cex=1.5)
+  text(0.8, 250, "K-S p=186", cex=1.2)
+  fig_label(x, cex=2)})}
+
+{sapply(LETTERS[2], function(x){
+  plot(histdl3, col="red",
+       angle=45, density=15,
+       main=NULL, 
+       xlab=expression(Delta*"L"), xlim=c(0.5,2.5), ylim=c(0,300))
+  plot(histdl4, add=TRUE, col="blue", angle=0, density=15)
+  legend("topright", legend=c("LCG","LTG"),
+         bty="n",fill = c("red", "blue"), angle=c(45, 0), density=seq(15,15),
+         cex=1.5)
+  text(0.9,200,expression("K-S p=3.2x10"^-7), cex=1.2)
+  fig_label(x, cex=2)})}
+```
+
